@@ -34,7 +34,7 @@ with vista1:
     c2.metric("Cancelled", f"{datos['is_canceled'].mean():.1%}")
     c3.metric("Revenue of cancelled bookings", f"{datos.loc[datos['is_canceled'] == 1, 'ingreso'].sum() / 1e6:.1f} M")
     c4.metric("Baseline accuracy", f"{1 - datos['is_canceled'].mean():.1%}", help="Always predicting 'not cancelled'. It finds no cancellations.")
-    st.markdown("**The decision:** which bookings should the front office call to reconfirm, so the hotel can act before losing the room?")
+    st.markdown("**The decision:** the hotel loses money when bookings cancel. Can a model tell it which bookings to act on, and is that better than contacting every guest?")
 
 with vista2:
     datos["anticipacion"] = pd.cut(datos["lead_time"], bins=[-1, 7, 30, 90, 180, 365, 1000],
@@ -85,10 +85,11 @@ with vista4:
     st.plotly_chart(grafico, width="stretch")
 
 with vista5:
-    izquierda, derecha = st.columns(2)
-    recupera = izquierda.slider("% of revenue at risk recovered by a call", 1, 30, 10) / 100
-    minutos = derecha.slider("Minutes per call (staff time at 30 per hour)", 2, 30, 10)
-    costo_llamada = minutos / 60 * 30
+    c1, c2, c3 = st.columns(3)
+    recupera = c1.slider("% of revenue at risk recovered by a call", 1, 30, 10) / 100
+    minutos = c2.slider("Minutes per call", 2, 30, 10)
+    costo_hora = c3.slider("Staff cost per hour (0 = staff with free time)", 0, 40, 10)
+    costo_llamada = minutos / 60 * costo_hora
     por_mes = len(datos) / 26 / len(test)
 
     marcada = test["prob_forest"] >= 0.3
@@ -104,7 +105,8 @@ with vista5:
     tabla["Net benefit"] = tabla["Money recovered"] - tabla["Cost of calls"]
     tabla = tabla * por_mes
 
-    st.markdown("**Per month, for both hotels.** Net benefit = money recovered − cost of the calls.")
+    st.markdown(f"**Per month, for both hotels.** Each call costs {costo_llamada:.2f} ({minutos} minutes at {costo_hora} per hour). "
+                "Net benefit = money recovered − cost of the calls.")
     st.dataframe(tabla.style.format("{:,.0f}"), width="stretch")
 
     colores = ["#9a9a9a", AZUL, NARANJO]
@@ -119,12 +121,14 @@ with vista5:
     grafico.update_layout(showlegend=False, xaxis_title="")
     derecha.plotly_chart(grafico, width="stretch")
 
-    modelo = tabla.loc["Call flagged bookings (model)"]
-    todos = tabla.loc["Call every booking"]
-    st.markdown(
-        f"**Compared with doing nothing, the model earns about {modelo['Net benefit']:,.0f} a month. "
-        f"Compared with calling everyone, it earns {modelo['Net benefit'] - todos['Net benefit']:+,.0f} a month "
-        f"with {todos['Calls'] - modelo['Calls']:,.0f} fewer calls ({todos['Staff hours'] - modelo['Staff hours']:,.0f} fewer staff hours).**"
-    )
+    modelo = tabla.loc["Call flagged bookings (model)", "Net benefit"]
+    todos = tabla.loc["Call every booking", "Net benefit"]
+    mejor = "calling every booking" if todos > modelo else "using the model"
+    st.markdown(f"**Best option with these assumptions: {mejor}** (difference of {abs(todos - modelo):,.0f} a month).")
+    if todos > modelo:
+        st.markdown("**Why:** a call is cheap, so a wrong guess costs almost nothing and calling everyone pays off. "
+                    "The model is worth it when a wrong guess is costly, like asking a guest who was going to stay for a deposit.")
+    else:
+        st.markdown("**Why:** at this cost, staff time is expensive, so calling only the riskiest bookings pays off more than calling everyone.")
     st.caption("Scaled from the notebook's test set to an average month (99,156 bookings over 26 months), threshold 0.3. "
-               "Assumption: a call recovers the chosen % of the revenue at risk. The currency is not stated in the data (most likely euros).")
+               "The three sliders are assumptions, not data. The currency is not stated in the data (most likely euros).")

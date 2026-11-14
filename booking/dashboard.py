@@ -89,36 +89,42 @@ with vista5:
     recupera = izquierda.slider("% of revenue at risk recovered by a call", 1, 30, 10) / 100
     minutos = derecha.slider("Minutes per call (staff time at 30 per hour)", 2, 30, 10)
     costo_llamada = minutos / 60 * 30
+    por_mes = len(datos) / 26 / len(test)
 
     marcada = test["prob_forest"] >= 0.3
     cancela = test["is_canceled"] == 1
-    opciones = pd.DataFrame({
-        "Option": ["Call flagged bookings (model)", "Call every booking"],
-        "Staff hours": [marcada.sum() * minutos / 60, len(test) * minutos / 60],
-        "Net benefit": [
-            recupera * test.loc[marcada & cancela, "ingreso"].sum() - costo_llamada * marcada.sum(),
-            recupera * test.loc[cancela, "ingreso"].sum() - costo_llamada * len(test),
-        ],
-    })
+    llamadas = [0, marcada.sum(), len(test)]
+    tabla = pd.DataFrame({
+        "Option": ["Do nothing (today)", "Call flagged bookings (model)", "Call every booking"],
+        "Calls": llamadas,
+        "Staff hours": [n * minutos / 60 for n in llamadas],
+        "Money recovered": [0, recupera * test.loc[marcada & cancela, "ingreso"].sum(), recupera * test.loc[cancela, "ingreso"].sum()],
+        "Cost of calls": [n * costo_llamada for n in llamadas],
+    }).set_index("Option")
+    tabla["Net benefit"] = tabla["Money recovered"] - tabla["Cost of calls"]
+    tabla = tabla * por_mes
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Calls with the model", f"{marcada.sum():,}", f"{marcada.sum() - len(test):,} vs calling everyone")
-    c2.metric("Staff hours saved", f"{opciones['Staff hours'][1] - opciones['Staff hours'][0]:,.0f}")
-    c3.metric("Net benefit with the model", f"{opciones['Net benefit'][0]:,.0f}",
-              f"{opciones['Net benefit'][0] - opciones['Net benefit'][1]:,.0f} vs calling everyone")
+    st.markdown("**Per month, for both hotels.** Net benefit = money recovered − cost of the calls.")
+    st.dataframe(tabla.style.format("{:,.0f}"), width="stretch")
 
+    colores = ["#9a9a9a", AZUL, NARANJO]
     izquierda, derecha = st.columns(2)
-    grafico = px.bar(opciones, x="Option", y="Staff hours", text_auto=",.0f", color="Option",
-                     color_discrete_sequence=[AZUL, NARANJO], title="Staff hours needed")
-    grafico.update_layout(showlegend=False)
+    grafico = px.bar(tabla.reset_index(), x="Option", y="Calls", text_auto=",.0f", color="Option",
+                     color_discrete_sequence=colores, title="Calls per month")
+    grafico.update_layout(showlegend=False, xaxis_title="")
     izquierda.plotly_chart(grafico, width="stretch")
 
-    grafico = px.bar(opciones, x="Option", y="Net benefit", text_auto=",.0f", color="Option",
-                     color_discrete_sequence=[AZUL, NARANJO], title="Net benefit")
-    grafico.update_layout(showlegend=False)
+    grafico = px.bar(tabla.reset_index(), x="Option", y="Net benefit", text_auto=",.0f", color="Option",
+                     color_discrete_sequence=colores, title="Net benefit per month")
+    grafico.update_layout(showlegend=False, xaxis_title="")
     derecha.plotly_chart(grafico, width="stretch")
 
-    st.markdown("**The model reaches about the same money with less than half the calls.** "
-                "If calls are short or staff is plentiful, calling everyone earns slightly more; if staff time is limited, the model is the way to choose whom to call.")
-    st.caption("Test set (29,823 bookings), threshold 0.3. Assumption: a call recovers the chosen % of the revenue at risk. "
-               "The currency is not stated in the data (most likely euros).")
+    modelo = tabla.loc["Call flagged bookings (model)"]
+    todos = tabla.loc["Call every booking"]
+    st.markdown(
+        f"**Compared with doing nothing, the model earns about {modelo['Net benefit']:,.0f} a month. "
+        f"Compared with calling everyone, it earns {modelo['Net benefit'] - todos['Net benefit']:+,.0f} a month "
+        f"with {todos['Calls'] - modelo['Calls']:,.0f} fewer calls ({todos['Staff hours'] - modelo['Staff hours']:,.0f} fewer staff hours).**"
+    )
+    st.caption("Scaled from the notebook's test set to an average month (99,156 bookings over 26 months), threshold 0.3. "
+               "Assumption: a call recovers the chosen % of the revenue at risk. The currency is not stated in the data (most likely euros).")

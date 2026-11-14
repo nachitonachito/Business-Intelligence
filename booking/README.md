@@ -34,4 +34,4 @@ streamlit run dashboard.py
 
 ## Use of AI
 
-We used Claude (Anthropic) as an assistant during the project. We used it to understand concepts (metrics, leakage, cross-validation), to review our code and find mistakes, to write parts of the code, especially the dashboard, and to help write the explanations in the notebook. We discussed and agreed on every decision, and checked every result in the notebook.
+We used Claude (Anthropic) as an assistant during the project. We used it to understand concepts (metrics, leakage, cross-validation), to review our code and find mistakes, and to write parts of the code, especially the dashboard. We discussed and agreed on every decision, and checked every result in the notebook.

@@ -26,7 +26,7 @@ def precision(marcada):
 st.title("Which bookings will be cancelled?")
 st.caption("Two hotels, arrivals from July 2015 to August 2017. Results from the notebook's test set (29,823 bookings).")
 
-vista1, vista2, vista3, vista4, vista5 = st.tabs(["1. Overview", "2. Who cancels", "3. Models", "4. Threshold", "5. Business impact"])
+vista1, vista2, vista3, vista4, vista5, vista6 = st.tabs(["1. Overview", "2. Who cancels", "3. Models", "4. Threshold", "5. Business impact", "6. Deposit (illustration)"])
 
 with vista1:
     c1, c2, c3, c4 = st.columns(4)
@@ -132,3 +132,54 @@ with vista5:
         st.markdown("**Why:** at this cost, staff time is expensive, so calling only the riskiest bookings pays off more than calling everyone.")
     st.caption("Scaled from the notebook's test set to an average month (99,156 bookings over 26 months), threshold 0.3. "
                "The three sliders are assumptions, not data. The currency is not stated in the data (most likely euros).")
+
+with vista6:
+    st.info("**Illustration, not a forecast.** With a call, a wrong guess costs a few minutes. With a deposit, a guest who was going "
+            "to stay may refuse it and book elsewhere. We do not know how many would leave: that is what an A/B test would measure.")
+    c1, c2, c3 = st.columns(3)
+    recupera_d = c1.slider("% of revenue at risk recovered by the deposit", 1, 30, 10, key="recupera_d") / 100
+    se_va = c2.slider("% of good guests who leave because of the deposit", 0, 30, 10, key="se_va") / 100
+    umbral_d = c3.slider("Ask a deposit from bookings with a risk of at least...", 0.10, 0.90, 0.50, 0.05, key="umbral_d")
+    por_mes = len(datos) / 26 / len(test)
+    cancela = test["is_canceled"] == 1
+
+    def deposito(pedir):
+        ganado = recupera_d * test.loc[pedir & cancela, "ingreso"].sum()
+        perdido = se_va * test.loc[pedir & ~cancela, "ingreso"].sum()
+        return [pedir.sum(), (pedir & ~cancela).sum(), ganado, perdido, ganado - perdido]
+
+    nada = pd.Series(False, index=test.index)
+    tabla = pd.DataFrame(
+        [deposito(nada), deposito(test["prob_forest"] >= umbral_d), deposito(~nada)],
+        index=pd.Index(["Do nothing (today)", "Deposit for flagged bookings (model)", "Deposit for every booking"], name="Option"),
+        columns=["Deposits asked", "Asked from guests who would stay", "Money recovered", "Money lost (guests who leave)", "Net benefit"],
+    ) * por_mes
+
+    st.markdown("**Per month, for both hotels.** Net benefit = money recovered − revenue of the good guests who leave.")
+    st.dataframe(tabla.style.format("{:,.0f}"), width="stretch")
+
+    izquierda, derecha = st.columns(2)
+    grafico = px.bar(tabla.reset_index(), x="Option", y="Net benefit", text_auto=",.0f", color="Option",
+                     color_discrete_sequence=["#9a9a9a", AZUL, NARANJO], title="Net benefit per month")
+    grafico.update_layout(showlegend=False, xaxis_title="")
+    izquierda.plotly_chart(grafico, width="stretch")
+
+    curva = pd.DataFrame([{"Threshold": u, "Net benefit": deposito(test["prob_forest"] >= u)[4] * por_mes}
+                          for u in [i / 20 for i in range(2, 19)]])
+    grafico = px.line(curva, x="Threshold", y="Net benefit", markers=True, color_discrete_sequence=[AZUL],
+                      title="Model: net benefit by threshold")
+    grafico.add_vline(x=umbral_d, line_dash="dash", line_color="gray")
+    grafico.add_hline(y=0, line_color="lightgray")
+    derecha.plotly_chart(grafico, width="stretch")
+
+    modelo = tabla.loc["Deposit for flagged bookings (model)", "Net benefit"]
+    todos = tabla.loc["Deposit for every booking", "Net benefit"]
+    mejor_umbral = curva.loc[curva["Net benefit"].idxmax(), "Threshold"]
+    if max(modelo, todos) <= 0:
+        st.markdown("**With these assumptions, no deposit pays off:** too many good guests leave.")
+    else:
+        mejor = "asking every booking" if todos > modelo else "asking only the bookings the model flags"
+        st.markdown(f"**Best option with these assumptions: {mejor}** (difference of {abs(todos - modelo):,.0f} a month).")
+    st.markdown(f"**The more good guests leave, the stricter the threshold should be.** With these assumptions, the best threshold is about {mejor_umbral:.2f}.")
+    st.caption("Same test set and monthly scaling as tab 5. The sliders are assumptions, not data. A deposit is a costly action, "
+               "so the hotel should test it first: half of the flagged bookings get a deposit, half do not, and it compares the results.")

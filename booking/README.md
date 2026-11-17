@@ -8,7 +8,8 @@ We predict which hotel bookings will be cancelled and check whether that helps t
 
 - `proyecto_booking.ipynb`: the notebook with the full analysis, answering the seven questions in order.
 - `hotel_bookings.csv`: the dataset.
-- `dashboard.py`: the dashboard.
+- `dashboardv2.py`: the dashboard.
+- `dashboard_antiguo(ignorar).py`: an older version, kept only for reference.
 - `resultados_test.csv` and `datos_limpios.csv`: files the notebook creates for the dashboard.
 - The slides, as a PDF.
 
@@ -29,7 +30,7 @@ Open the notebook and run all cells from the top. It takes about 10 minutes, mos
 The last cell of the notebook saves the two CSV files the dashboard reads. Then, from this folder:
 
 ```
-streamlit run dashboard.py
+streamlit run dashboardv2.py --theme.base light
 ```
 
 ## Use of AI
